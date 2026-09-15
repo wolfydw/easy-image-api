@@ -76,7 +76,7 @@ $easy-image-api 只把遮罩区域内的背景改成浅灰色，其他区域保�
 请安装这个 skill：https://github.com/wolfydw/easy-image-api。安装后提示我在本地编辑器中填写 skill 目录内 config.json 的接口地址和 API Key，不要让我把 API Key 粘贴到对话中。如果是升级，必须保留已有的 config.json，不得读取、覆盖、删除或修改，只更新其他文件。
 ```
 
-Codex 会从 GitHub 安装 `easy-image-api`，带中文占位符的配置文件会随 skill 一起安装到 `~/.codex/skills/easy-image-api/config.json`。请在本地编辑器中填写自己的接口地址和 API Key；图片模型默认使用 `gpt-image-2`。升级时，Codex 必须保留已有的 `config.json`，只更新其他文件。安装完成后，在下一个任务中即可使用 `$easy-image-api`。
+Codex 会从 GitHub 安装 `easy-image-api`，带中文占位符的配置文件会随 skill 一起安装到 `~/.codex/skills/easy-image-api/config.json`。请在本地编辑器中填写自己的接口地址和 API Key；图片模型默认使用 `gpt-image-2.5`。升级时，Codex 必须保留已有的 `config.json`，只更新其他文件。安装完成后，在下一个任务中即可使用 `$easy-image-api`。
 
 ## License
 

@@ -93,7 +93,7 @@ class _CliFixture:
         config: dict[str, object] = {
             "endpoint": "https://relay.example.com",
             "api_key": "test-api-key-that-must-not-leak",
-            "model": "gpt-image-2",
+            "model": "gpt-image-2.5",
             "size": "auto",
             "quality": "high",
             "output_format": "png",
@@ -328,7 +328,7 @@ class RequestEncodingTests(unittest.TestCase):
             self.assertEqual(request.full_url, "https://relay.example.com/v1/images/generations")
             self.assertEqual(request.headers["Content-type"], "application/json")
             self.assertEqual(json.loads(request.data or b"{}"), {
-                "model": "gpt-image-2",
+                "model": "gpt-image-2.5",
                 "prompt": "generate test",
                 "n": 1,
                 "size": "auto",
@@ -374,7 +374,7 @@ class RequestEncodingTests(unittest.TestCase):
             self.assertIn(b'filename="mask.png"', body)
             self.assertLess(body.index(first_bytes), body.index(second_bytes))
             for name, value in (
-                (b"model", b"gpt-image-2"),
+                (b"model", b"gpt-image-2.5"),
                 (b"prompt", b"replace only the masked region"),
                 (b"n", b"1"),
                 (b"size", b"auto"),
@@ -597,7 +597,7 @@ class FormatValidationTests(unittest.TestCase):
             json.dumps(
                 {
                     "endpoint": "https://relay.example.com",
-                    "model": "gpt-image-2",
+                    "model": "gpt-image-2.5",
                     "size": "auto",
                     "quality": "high",
                     "output_format": "png",

@@ -23,7 +23,7 @@ from typing import Any, Optional, Union
 
 SKILL_NAME = "easy-image-api"
 SKILL_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_MODEL = "gpt-image-2"
+DEFAULT_MODEL = "gpt-image-2.5"
 DEFAULT_SIZE = "auto"
 DEFAULT_QUALITY = "high"
 DEFAULT_OUTPUT_FORMAT = "png"

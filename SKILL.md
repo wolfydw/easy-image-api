@@ -23,7 +23,7 @@ or a command argument. The template contains:
 {
   "endpoint": "请填写图片接口地址",
   "api_key": "请填写 API Key",
-  "model": "gpt-image-2",
+  "model": "gpt-image-2.5",
   "size": "auto",
   "quality": "high",
   "output_format": "png"
