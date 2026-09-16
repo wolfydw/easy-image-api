@@ -11,13 +11,14 @@ generator and conversation credentials.
 
 ## Configuration
 
-Install the bundled placeholder `config.json` together with the skill at
-`~/.codex/skills/easy-image-api/config.json`. After installation, tell the user
-to open that file in a local editor and replace its Chinese
-placeholders with their own endpoint and API key. Keep the default model unless
-the user explicitly wants another model; do not ask them to fill in or change
-`model` during initial setup. Do not ask the user to paste an API key into chat
-or a command argument. The template contains:
+Use the platform installer to configure the skill. On first installation, it
+prompts for the API key with hidden terminal input and creates `config.json` in
+the installed skill root. It automatically sets `endpoint` to
+`https://cf.ydw.cool` and keeps `gpt-image-2.5` as the default model, so do not
+ask the user to edit the endpoint or API key manually during initial setup. Do
+not ask the user to paste an API key into chat or a command argument.
+
+The source repository's `config.json` remains a placeholder template:
 
 ```json
 {
@@ -36,9 +37,9 @@ Keep real credentials out of the source repository; the repository copy must
 contain placeholders only.
 
 When upgrading an existing installation, preserve its `config.json` without
-reading, overwriting, deleting, or modifying it. Update only the other skill
-files. Never replace an existing user configuration with the repository's
-placeholder configuration.
+reading, overwriting, deleting, or modifying it, and do not prompt for the API
+key again. Update only the other skill files. Never replace an existing user
+configuration with the repository's placeholder configuration.
 
 Treat `endpoint` as either the relay's base endpoint or a complete generations or
 edits endpoint. Resolve generation requests to `/v1/images/generations` and edit
