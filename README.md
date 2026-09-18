@@ -62,7 +62,7 @@ $easy-image-api 只把遮罩区域内的背景改成浅灰色，其他区域保�
 ├── config.json                # 接口配置模板（仅包含中文占位符）
 ├── scripts/
 │   ├── generate_image.py      # 图片生成与编辑脚本
-│   └── install_skill.py       # 跨平台安装逻辑
+│   └── install_skill.py       # Python 安装辅助逻辑
 ├── tests/
 │   ├── test_generate_image.py # 图片生成与编辑测试
 │   └── test_install_skill.py  # 安装与升级测试
@@ -74,7 +74,7 @@ $easy-image-api 只把遮罩区域内的背景改成浅灰色，其他区域保�
 
 ## 一键安装
 
-安装前请确认电脑已安装 Python 3.9 或更高版本，然后根据系统在终端中运行对应命令。
+安装阶段不需要 Python。macOS/Linux 需要 `curl` 和 `unzip`；根据系统在终端中运行对应命令即可。实际生成或编辑图片时需要 Python 3.9 或更高版本。
 
 macOS / Linux：
 
@@ -88,7 +88,7 @@ Windows PowerShell：
 irm https://raw.githubusercontent.com/wolfydw/easy-image-api/main/install.ps1 | iex
 ```
 
-首次安装时，安装器会在终端中隐藏输入内容并询问生图 API Key，不会把密钥显示在屏幕上或放入命令参数。安装器随后自动生成本机 `config.json`，将接口地址写为 `https://cf.ydw.cool`，图片模型默认为 `gpt-image-2.5`，无需手工编辑配置。
+首次安装时，安装器只复制 Skill 文件，并在终端中提示输入 API Key；输入内容会正常显示，方便确认是否已粘贴，然后自动生成本机 `config.json`。安装器不会检查 Python，也不会把密钥放入命令参数。接口地址默认为 `https://cf.ydw.cool`，图片模型默认为 `gpt-image-2.5`。
 
 再次运行同一条命令即可升级。升级时，安装器会保留已有的 `config.json`，不会读取、覆盖、删除或修改它，也不会再次询问 API Key；只有其他 skill 文件会更新。仓库中的 `config.json` 始终只包含占位符，不含真实接口信息或密钥。
 

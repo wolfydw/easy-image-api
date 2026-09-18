@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import getpass
 import io
 import json
 import os
@@ -281,10 +280,10 @@ def _update_runtime_transactionally(
 
 
 def _prompt_api_key(reader: Optional[Callable[[str], str]] = None) -> str:
-    prompt = reader or getpass.getpass
+    prompt = reader or input
     while True:
         try:
-            api_key = prompt("请输入生图 API Key（输入时不会显示）：")
+            api_key = prompt("请输入生图 API Key：")
         except (EOFError, KeyboardInterrupt) as exc:
             raise InstallError("未收到 API Key，安装已取消。") from exc
         if api_key.strip():

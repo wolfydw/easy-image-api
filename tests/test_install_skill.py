@@ -40,6 +40,13 @@ def _write_source(directory: Path, marker: str = "first") -> Path:
 
 
 class InstallTests(unittest.TestCase):
+    def test_default_api_key_prompt_uses_visible_input(self) -> None:
+        with mock.patch("builtins.input", return_value="visible-key") as prompt:
+            api_key = INSTALLER._prompt_api_key()
+
+        self.assertEqual(api_key, "visible-key")
+        prompt.assert_called_once_with("请输入生图 API Key：")
+
     def test_fresh_install_writes_fixed_endpoint_and_escaped_key(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)

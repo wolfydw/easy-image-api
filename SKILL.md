@@ -11,12 +11,12 @@ generator and conversation credentials.
 
 ## Configuration
 
-Use the platform installer to configure the skill. On first installation, it
-prompts for the API key with hidden terminal input and creates `config.json` in
-the installed skill root. It automatically sets `endpoint` to
-`https://cf.ydw.cool` and keeps `gpt-image-2.5` as the default model, so do not
-ask the user to edit the endpoint or API key manually during initial setup. Do
-not ask the user to paste an API key into chat or a command argument.
+The platform installer copies the skill files and, on first installation, asks
+for the API key with visible terminal input so the user can confirm that it was
+pasted before creating `config.json` in the installed skill root. Installation
+does not require Python. It sets `endpoint` to `https://cf.ydw.cool` and keeps
+`gpt-image-2.5` as the default model. Never ask the user to paste an API key into
+chat or a command argument.
 
 The source repository's `config.json` remains a placeholder template:
 
