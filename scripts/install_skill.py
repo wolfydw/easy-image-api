@@ -29,7 +29,12 @@ MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 100 * 1024 * 1024
 MAX_MEMBER_BYTES = 25 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 2_000
-REQUIRED_FILES = ("SKILL.md", "scripts/generate_image.py")
+REQUIRED_FILES = (
+    "SKILL.md",
+    "scripts/generate_image.py",
+    "scripts/run_generate_image.sh",
+    "scripts/run_generate_image.ps1",
+)
 MANAGED_ROOTS = ("SKILL.md", "agents", "assets", "references", "scripts")
 IGNORED_NAMES = {"__pycache__", ".DS_Store"}
 
@@ -408,8 +413,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    if sys.version_info < (3, 9):
-        print("错误：安装和使用此 skill 需要 Python 3.9 或更高版本。", file=sys.stderr)
+    if sys.version_info < (3, 7):
+        print("错误：安装和使用此 skill 需要 Python 3.7 或更高版本。", file=sys.stderr)
         return 1
 
     args = _build_parser().parse_args()

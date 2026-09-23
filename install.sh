@@ -55,7 +55,7 @@ curl \
 
 unzip -q "$ARCHIVE_PATH" -d "$EXTRACT_PATH"
 SOURCE_DIRECTORY="$(find "$EXTRACT_PATH" -mindepth 1 -maxdepth 1 -type d -print -quit)"
-if [[ -z "$SOURCE_DIRECTORY" || ! -f "$SOURCE_DIRECTORY/SKILL.md" || ! -f "$SOURCE_DIRECTORY/scripts/generate_image.py" ]]; then
+if [[ -z "$SOURCE_DIRECTORY" || ! -f "$SOURCE_DIRECTORY/SKILL.md" || ! -f "$SOURCE_DIRECTORY/scripts/generate_image.py" || ! -f "$SOURCE_DIRECTORY/scripts/run_generate_image.sh" || ! -f "$SOURCE_DIRECTORY/scripts/run_generate_image.ps1" ]]; then
   printf '%s\n' "错误：安装包缺少必要的 skill 文件。" >&2
   exit 1
 fi
@@ -123,5 +123,5 @@ else
   printf '%s\n' "easy-image-api skill 已安装：$DESTINATION"
   printf '%s\n' "配置文件已生成：$DESTINATION/config.json"
 fi
-printf '%s\n' "安装阶段不需要 Python。实际生成或编辑图片时需要 Python 3.9 或更高版本。"
+printf '%s\n' "安装阶段不需要 Python。实际生成或编辑图片时，skill 会探测现有的 Python 3.7+ 环境；不会自动安装 Python。"
 printf '%s\n' "请在 Codex 的下一个任务中使用 \$easy-image-api。"

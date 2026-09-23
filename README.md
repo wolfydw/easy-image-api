@@ -11,7 +11,7 @@ Easy Image API 是一个 Codex skill，让 Codex 通过你自己的 OpenAI-compa
 - 自动兼容常见的 Base64 和图片 URL 响应，并校验输出格式，减少不同中转站之间的适配工作。
 - API Key 只保存在本机配置文件中，不需要发送到 Codex 对话。
 
-项目支持 PNG、JPEG、WebP 输入与输出，最多可同时上传 16 张参考图。运行脚本只依赖 Python 3.9+ 标准库，无需安装第三方 Python 包。
+项目支持 PNG、JPEG、WebP 输入与输出，最多可同时上传 16 张参考图。运行时会探测设备上现有的 Python 3.7+ 环境，并只使用 Python 标准库，无需安装第三方 Python 包。
 
 ## ❤️ 赞助商
 
@@ -62,6 +62,8 @@ $easy-image-api 只把遮罩区域内的背景改成浅灰色，其他区域保�
 ├── config.json                # 接口配置模板（仅包含中文占位符）
 ├── scripts/
 │   ├── generate_image.py      # 图片生成与编辑脚本
+│   ├── run_generate_image.sh  # macOS/Linux Python 探测启动器
+│   ├── run_generate_image.ps1 # Windows Python 探测启动器
 │   └── install_skill.py       # Python 安装辅助逻辑
 ├── tests/
 │   ├── test_generate_image.py # 图片生成与编辑测试
@@ -74,7 +76,7 @@ $easy-image-api 只把遮罩区域内的背景改成浅灰色，其他区域保�
 
 ## 一键安装
 
-安装阶段不需要 Python。macOS/Linux 需要 `curl` 和 `unzip`；根据系统在终端中运行对应命令即可。实际生成或编辑图片时需要 Python 3.9 或更高版本。
+安装阶段不需要 Python。macOS/Linux 需要 `curl` 和 `unzip`；根据系统在终端中运行对应命令即可。实际生成或编辑图片时，skill 会先探测现有的 Python 3.7+ 环境；不会强制要求 3.9，也不会自动安装 Python。
 
 macOS / Linux：
 

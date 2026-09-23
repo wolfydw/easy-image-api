@@ -40,7 +40,7 @@ try {
     if ($null -eq $source) {
         throw "安装包中没有找到 skill 源目录。"
     }
-    foreach ($required in @("SKILL.md", "scripts\generate_image.py")) {
+    foreach ($required in @("SKILL.md", "scripts\generate_image.py", "scripts\run_generate_image.sh", "scripts\run_generate_image.ps1")) {
         if (-not (Test-Path -LiteralPath (Join-Path $source.FullName $required) -PathType Leaf)) {
             throw "安装包缺少必要文件：$required"
         }
@@ -120,7 +120,7 @@ try {
         Write-Output "easy-image-api skill 已安装：$destination"
         Write-Output "配置文件已生成：$configPath"
     }
-    Write-Output "安装阶段不需要 Python。实际生成或编辑图片时需要 Python 3.9 或更高版本。"
+    Write-Output "安装阶段不需要 Python。实际生成或编辑图片时，skill 会探测现有的 Python 3.7+ 环境；不会自动安装 Python。"
     Write-Output "请在 Codex 的下一个任务中使用 `$easy-image-api。"
 }
 finally {

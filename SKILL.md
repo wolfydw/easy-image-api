@@ -73,18 +73,30 @@ configuration file is stored.
    - Add `--mask` only when the user provides a prepared transparent PNG mask.
 3. Choose a new output path under the current workspace. For projectless tasks,
    prefer `outputs/easy-image-api/<descriptive-name>.<format>`.
-4. Run the bundled script with an available Python 3 interpreter.
+4. Run the platform launcher bundled with the skill. It first checks for an existing Python 3.7+ interpreter and uses the first one it finds; it does not install Python or require a fixed 3.9 version.
 
 Generation:
 
 ```text
-python3 <skill-dir>/scripts/generate_image.py --prompt "<prompt>" --out "<absolute-output-path>"
+macOS/Linux:
+
+    <skill-dir>/scripts/run_generate_image.sh --prompt "<prompt>" --out "<absolute-output-path>"
+
+Windows PowerShell:
+
+    & <skill-dir>/scripts/run_generate_image.ps1 --prompt "<prompt>" --out "<absolute-output-path>"
 ```
 
 Source-image editing:
 
 ```text
-python3 <skill-dir>/scripts/generate_image.py --image "<absolute-source-path>" --prompt "<prompt>" --out "<absolute-output-path>"
+macOS/Linux:
+
+    <skill-dir>/scripts/run_generate_image.sh --image "<absolute-source-path>" --prompt "<prompt>" --out "<absolute-output-path>"
+
+Windows PowerShell:
+
+    & <skill-dir>/scripts/run_generate_image.ps1 --image "<absolute-source-path>" --prompt "<prompt>" --out "<absolute-output-path>"
 ```
 
 Repeat `--image` for multiple reference images. The first image is the primary
@@ -93,11 +105,20 @@ edit target when a mask is present.
 Mask editing:
 
 ```text
-python3 <skill-dir>/scripts/generate_image.py --image "<absolute-source-png>" --mask "<absolute-mask-png>" --prompt "<prompt>" --out "<absolute-output-path>"
+macOS/Linux:
+
+    <skill-dir>/scripts/run_generate_image.sh --image "<absolute-source-png>" --mask "<absolute-mask-png>" --prompt "<prompt>" --out "<absolute-output-path>"
+
+Windows PowerShell:
+
+    & <skill-dir>/scripts/run_generate_image.ps1 --image "<absolute-source-png>" --mask "<absolute-mask-png>" --prompt "<prompt>" --out "<absolute-output-path>"
 ```
 
-On Windows, prefer `py -3`; otherwise try `python3`, then `python`, and require
-Python 3.9 or newer. The script uses only the Python standard library.
+The launchers check Python candidates in this order: Windows `py -3`, `python3`,
+then `python`; macOS/Linux `python3`, then `python`. A candidate is accepted only
+when it is Python 3.7 or newer. The script uses only the Python standard library;
+no `pip install` or third-party package is required. If no candidate is available,
+report that Python 3 must be installed and stop rather than silently installing it.
 
 5. As soon as the request succeeds, render every saved image in the response with
    an absolute Markdown image path. Do not inspect, review, or regenerate it before

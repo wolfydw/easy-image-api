@@ -30,6 +30,12 @@ def _write_source(directory: Path, marker: str = "first") -> Path:
     (source / "scripts" / "generate_image.py").write_text(
         f"# generator {marker}\n", encoding="utf-8"
     )
+    (source / "scripts" / "run_generate_image.sh").write_text(
+        "#!/usr/bin/env sh\n", encoding="utf-8"
+    )
+    (source / "scripts" / "run_generate_image.ps1").write_text(
+        "# launcher\n", encoding="utf-8"
+    )
     (source / "scripts" / "ignored.pyc").write_bytes(b"ignored")
     (source / "assets" / "asset.txt").write_text(marker, encoding="utf-8")
     (source / "config.json").write_text(
