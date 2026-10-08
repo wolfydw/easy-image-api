@@ -81,14 +81,36 @@ $easy-image-api 只把遮罩区域内的背景改成浅灰色，其他区域保�
 macOS / Linux：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wolfydw/easy-image-api/main/install.sh | bash
+(
+  set -eu
+  u="https://raw.githubusercontent.com/wolfydw/easy-image-api/main/install.sh"
+  f=$(mktemp)
+  trap 'rm -f -- "$f"' EXIT
+  if ! curl -fsSL --connect-timeout 8 --max-time 20 "$u" -o "$f"; then
+    echo "GitHub 直连失败，正在尝试 ghfast 加速下载。" >&2
+    curl -fsSL --connect-timeout 8 --max-time 20 "https://ghfast.top/$u" -o "$f"
+  fi
+  bash "$f"
+)
 ```
 
 Windows PowerShell：
 
 ```powershell
-irm https://raw.githubusercontent.com/wolfydw/easy-image-api/main/install.ps1 | iex
+& {
+  $u = "https://raw.githubusercontent.com/wolfydw/easy-image-api/main/install.ps1"
+  try { $s = Invoke-RestMethod -Uri $u -TimeoutSec 20 -ErrorAction Stop }
+  catch {
+    Write-Host "GitHub 直连失败，正在尝试 ghfast 加速下载。"
+    $s = Invoke-RestMethod -Uri ("https://ghfast.top/" + $u) -TimeoutSec 20 -ErrorAction Stop
+  }
+  & ([scriptblock]::Create($s))
+}
 ```
+
+安装器会先尝试从 GitHub 下载正式安装包；连接失败、超时或下载内容无效时，会自动改用
+`ghfast.top` 加速地址。两条线路都失败才会终止安装。由于最外层的一键命令本身也需要先取得安装脚本，
+上面的命令同样对安装脚本提供了自动回退。
 
 首次安装时，安装器只复制 Skill 文件，并在终端中提示输入 API Key；输入内容会正常显示，方便确认是否已粘贴，然后自动生成本机 `config.json`。安装器不会检查 Python，也不会把密钥放入命令参数。接口地址默认为 `https://cf.ydw.cool`，图片模型默认为 `gpt-image-2.5`。
 
