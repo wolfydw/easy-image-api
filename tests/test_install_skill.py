@@ -12,6 +12,7 @@ import unittest
 import zipfile
 from pathlib import Path
 from unittest import mock
+from contextlib import redirect_stderr, redirect_stdout
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "install_skill.py"
@@ -46,12 +47,80 @@ def _write_source(directory: Path, marker: str = "first") -> Path:
 
 
 class InstallTests(unittest.TestCase):
+    @staticmethod
+    def _model_options():
+        return (lambda _api_key, _endpoint: []), (lambda _prompt: "")
+
     def test_default_api_key_prompt_uses_visible_input(self) -> None:
         with mock.patch("builtins.input", return_value="visible-key") as prompt:
             api_key = INSTALLER._prompt_api_key()
 
         self.assertEqual(api_key, "visible-key")
         prompt.assert_called_once_with("请输入生图 API Key：")
+
+    def test_fetch_models_uses_models_endpoint_and_bearer_header(self) -> None:
+        captured = {}
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self, _size=-1):
+                return b'{"data":[{"id":"gpt-image-2.5"},{"id":"other"}]}'
+
+        def opener(request, timeout):
+            captured["request"] = request
+            captured["timeout"] = timeout
+            return Response()
+
+        models = INSTALLER._fetch_models(
+            "secret-key", "https://relay.example.com/v1/images/generations", opener
+        )
+
+        self.assertEqual(models, ["gpt-image-2.5", "other"])
+        self.assertEqual(captured["request"].full_url, "https://relay.example.com/v1/models")
+        self.assertEqual(captured["request"].get_header("Authorization"), "Bearer secret-key")
+        self.assertEqual(captured["timeout"], INSTALLER.MODEL_REQUEST_TIMEOUT)
+
+    def test_select_model_displays_models_and_returns_choice(self) -> None:
+        output = io.StringIO()
+        with redirect_stdout(output):
+            selected = INSTALLER._select_model(
+                "secret-key",
+                model_reader=lambda _prompt: "2",
+                model_fetcher=lambda _key, _endpoint: ["first", "second"],
+            )
+
+        self.assertEqual(selected, "second")
+        self.assertIn("1. first", output.getvalue())
+        self.assertIn("2. second", output.getvalue())
+
+    def test_select_model_uses_default_model_when_entered(self) -> None:
+        selected = INSTALLER._select_model(
+            "secret-key",
+            model_reader=lambda _prompt: "",
+            model_fetcher=lambda _key, _endpoint: ["other", "gpt-image-2.5"],
+        )
+
+        self.assertEqual(selected, "gpt-image-2.5")
+
+    def test_failed_model_fetch_allows_manual_model(self) -> None:
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            selected = INSTALLER._select_model(
+                "secret-key",
+                model_reader=lambda _prompt: "manual-model",
+                model_fetcher=lambda _key, _endpoint: (_ for _ in ()).throw(
+                    INSTALLER.InstallError("service unavailable")
+                ),
+            )
+
+        self.assertEqual(selected, "manual-model")
+        self.assertIn("手动输入模型名", errors.getvalue())
+        self.assertNotIn("secret-key", errors.getvalue())
 
     def test_fresh_install_writes_fixed_endpoint_and_escaped_key(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -60,7 +129,14 @@ class InstallTests(unittest.TestCase):
             destination = root / "codex" / "skills" / "easy-image-api"
             api_key = '密钥-$&-"quotes"-and-\\slashes\nnext-line'
 
-            result = INSTALLER.install(source, destination, lambda _prompt: api_key)
+            model_fetcher, model_reader = self._model_options()
+            result = INSTALLER.install(
+                source,
+                destination,
+                lambda _prompt: api_key,
+                model_reader,
+                model_fetcher,
+            )
 
             self.assertEqual(result, "installed")
             config = json.loads((destination / "config.json").read_text(encoding="utf-8"))
@@ -77,6 +153,23 @@ class InstallTests(unittest.TestCase):
             if os.name == "posix":
                 mode = stat.S_IMODE((destination / "config.json").stat().st_mode)
                 self.assertEqual(mode, 0o600)
+
+    def test_fresh_install_writes_selected_model(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = _write_source(root)
+            destination = root / "destination"
+            result = INSTALLER.install(
+                source,
+                destination,
+                lambda _prompt: "key",
+                lambda _prompt: "1",
+                lambda _key, _endpoint: ["selected-model"],
+            )
+
+            self.assertEqual(result, "installed")
+            config = json.loads((destination / "config.json").read_text(encoding="utf-8"))
+            self.assertEqual(config["model"], "selected-model")
 
     def test_upgrade_preserves_config_without_prompting(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -170,7 +263,14 @@ class InstallTests(unittest.TestCase):
             destination = root / "destination"
             destination.mkdir()
 
-            result = INSTALLER.install(source, destination, lambda _prompt: "new-key")
+            model_fetcher, model_reader = self._model_options()
+            result = INSTALLER.install(
+                source,
+                destination,
+                lambda _prompt: "new-key",
+                model_reader,
+                model_fetcher,
+            )
 
             self.assertEqual(result, "installed")
             config = json.loads((destination / "config.json").read_text(encoding="utf-8"))
@@ -198,7 +298,11 @@ class InstallTests(unittest.TestCase):
                 side_effect=update_then_create_config,
             ):
                 result = INSTALLER.install(
-                    source, destination, lambda _prompt: "discarded-key"
+                    source,
+                    destination,
+                    lambda _prompt: "discarded-key",
+                    lambda _prompt: "",
+                    lambda _api_key, _endpoint: [],
                 )
 
             self.assertEqual(result, "upgraded")

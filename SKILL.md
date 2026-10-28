@@ -13,10 +13,12 @@ generator and conversation credentials.
 
 The platform installer copies the skill files and, on first installation, asks
 for the API key with visible terminal input so the user can confirm that it was
-pasted before creating `config.json` in the installed skill root. Installation
-does not require Python. It sets `endpoint` to `https://cf.ydw.cool` and keeps
-`gpt-image-2.5` as the default model. Never ask the user to paste an API key into
-chat or a command argument.
+pasted. It then requests `/v1/models` with that key and lets the user choose a
+model before creating `config.json` in the installed skill root. If the model
+list is unavailable, the installer accepts a manually entered model name or
+uses `gpt-image-2.5` when left blank. Installation does not require Python. It
+sets `endpoint` to `https://cf.ydw.cool`. Never ask the user to paste an API key
+into chat or a command argument.
 
 The source repository's `config.json` remains a placeholder template:
 

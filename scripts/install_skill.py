@@ -17,7 +17,8 @@ import urllib.request
 import uuid
 import zipfile
 from pathlib import Path, PurePosixPath
-from typing import Callable, Iterable, Iterator, Optional
+from typing import Callable, Iterable, Iterator, Optional, Sequence
+from urllib.parse import urlsplit, urlunsplit
 
 
 SKILL_NAME = "easy-image-api"
@@ -25,6 +26,8 @@ REPOSITORY_ARCHIVE_URL = (
     "https://github.com/wolfydw/easy-image-api/archive/refs/heads/main.zip"
 )
 ARCHIVE_USER_AGENT = "easy-image-api-installer/1.0"
+MODEL_REQUEST_TIMEOUT = 30
+MAX_MODEL_RESPONSE_BYTES = 5 * 1024 * 1024
 MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 100 * 1024 * 1024
 MAX_MEMBER_BYTES = 25 * 1024 * 1024
@@ -296,9 +299,128 @@ def _prompt_api_key(reader: Optional[Callable[[str], str]] = None) -> str:
         print("API Key 不能为空，请重新输入。", file=sys.stderr)
 
 
-def _write_config(destination: Path, api_key: str) -> None:
+def _models_endpoint(endpoint: str) -> str:
+    """Resolve a relay base or image endpoint to its OpenAI-compatible models URL."""
+    parsed = urlsplit(endpoint.strip())
+    if not parsed.scheme or not parsed.netloc:
+        raise InstallError("图片接口地址无效，无法获取模型列表。")
+    path = parsed.path.rstrip("/")
+    marker = "/v1"
+    marker_index = path.find(marker)
+    if marker_index >= 0 and (path[marker_index + len(marker):] in ("", "/") or
+                              path[marker_index + len(marker):].startswith("/")):
+        path = path[:marker_index] + "/v1/models"
+    else:
+        path = path + "/v1/models"
+    return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+
+def _fetch_models(
+    api_key: str,
+    endpoint: str = DEFAULT_CONFIG["endpoint"],
+    opener: Optional[Callable[..., object]] = None,
+) -> list[str]:
+    """Fetch model IDs without printing the credential or response body."""
+    models_url = _models_endpoint(endpoint)
+    request = urllib.request.Request(
+        models_url,
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {api_key}",
+            "User-Agent": "easy-image-api-installer/1.0",
+        },
+    )
+    open_url = opener or urllib.request.urlopen
+    try:
+        with open_url(request, timeout=MODEL_REQUEST_TIMEOUT) as response:
+            response_bytes = response.read(MAX_MODEL_RESPONSE_BYTES + 1)
+            if len(response_bytes) > MAX_MODEL_RESPONSE_BYTES:
+                raise InstallError("模型列表响应过大，将改为手动选择模型。")
+            payload = json.loads(response_bytes.decode("utf-8"))
+    except (OSError, urllib.error.URLError, ValueError, UnicodeError) as exc:
+        raise InstallError("无法获取模型列表，将改为手动选择模型。") from exc
+
+    raw_models = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(raw_models, list):
+        raise InstallError("模型列表格式无效，将改为手动选择模型。")
+    model_ids: list[str] = []
+    seen: set[str] = set()
+    for item in raw_models:
+        model_id = item.get("id") if isinstance(item, dict) else None
+        if isinstance(model_id, str):
+            model_id = model_id.strip()
+        if (
+            isinstance(model_id, str)
+            and model_id
+            and model_id.isprintable()
+            and model_id not in seen
+        ):
+            seen.add(model_id)
+            model_ids.append(model_id)
+    return model_ids
+
+
+def _prompt_model_name(reader: Optional[Callable[[str], str]] = None) -> str:
+    prompt = reader or input
+    while True:
+        try:
+            model = prompt(
+                f"请输入模型名（直接回车使用默认 {DEFAULT_CONFIG['model']}）："
+            )
+        except (EOFError, KeyboardInterrupt) as exc:
+            raise InstallError("未选择模型，安装已取消。") from exc
+        if model.strip():
+            return model.strip()
+        return DEFAULT_CONFIG["model"]
+
+
+def _select_model(
+    api_key: str,
+    endpoint: str = DEFAULT_CONFIG["endpoint"],
+    model_reader: Optional[Callable[[str], str]] = None,
+    model_fetcher: Optional[Callable[[str, str], Sequence[str]]] = None,
+) -> str:
+    fetch_models = model_fetcher or _fetch_models
+    try:
+        models = list(fetch_models(api_key, endpoint))
+    except (InstallError, OSError, urllib.error.URLError, ValueError):
+        print("获取模型列表失败，将改为手动输入模型名。", file=sys.stderr)
+        return _prompt_model_name(model_reader)
+
+    if not models:
+        print("接口未返回可用模型，将改为手动输入模型名。", file=sys.stderr)
+        return _prompt_model_name(model_reader)
+
+    print("检测到可用模型：")
+    for index, model in enumerate(models, start=1):
+        print(f"  {index}. {model}")
+    prompt = model_reader or input
+    while True:
+        try:
+            choice = prompt(
+                f"请选择模型编号（直接回车使用默认 {DEFAULT_CONFIG['model']}，输入 0 手动填写）："
+            ).strip()
+        except (EOFError, KeyboardInterrupt) as exc:
+            raise InstallError("未选择模型，安装已取消。") from exc
+        if not choice:
+            default_model = DEFAULT_CONFIG["model"]
+            return default_model if default_model in models else models[0]
+        if choice == "0":
+            return _prompt_model_name(model_reader)
+        try:
+            selected = int(choice)
+        except ValueError:
+            print("请输入列表中的编号。", file=sys.stderr)
+            continue
+        if 1 <= selected <= len(models):
+            return models[selected - 1]
+        print("请输入列表中的编号。", file=sys.stderr)
+
+
+def _write_config(destination: Path, api_key: str, model: str) -> None:
     config = dict(DEFAULT_CONFIG)
     config["api_key"] = api_key
+    config["model"] = model
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.parent / f".{destination.name}.{uuid.uuid4().hex}.tmp"
     try:
@@ -320,9 +442,10 @@ def _write_config(destination: Path, api_key: str) -> None:
             pass
 
 
-def _create_config_exclusively(destination: Path, api_key: str) -> bool:
+def _create_config_exclusively(destination: Path, api_key: str, model: str) -> bool:
     config = dict(DEFAULT_CONFIG)
     config["api_key"] = api_key
+    config["model"] = model
     try:
         descriptor = os.open(
             destination,
@@ -351,6 +474,8 @@ def install(
     source: Path,
     destination: Path,
     key_reader: Optional[Callable[[str], str]] = None,
+    model_reader: Optional[Callable[[str], str]] = None,
+    model_fetcher: Optional[Callable[[str, str], Sequence[str]]] = None,
 ) -> str:
     source = _validate_source(source)
     managed_files = list(_iter_managed_files(source))
@@ -360,17 +485,31 @@ def install(
         raise InstallError(f"安装目标不是目录：{destination}")
 
     with _installation_lock(destination):
-        return _install_locked(managed_files, destination, key_reader)
+        return _install_locked(
+            managed_files, destination, key_reader, model_reader, model_fetcher
+        )
 
 
 def _install_locked(
     managed_files: list[tuple[Path, Path]],
     destination: Path,
     key_reader: Optional[Callable[[str], str]],
+    model_reader: Optional[Callable[[str], str]],
+    model_fetcher: Optional[Callable[[str, str], Sequence[str]]],
 ) -> str:
     config_path = destination / "config.json"
     has_existing_config = _path_entry_exists(config_path)
     api_key = None if has_existing_config else _prompt_api_key(key_reader)
+    model = (
+        None
+        if api_key is None
+        else _select_model(
+            api_key,
+            DEFAULT_CONFIG["endpoint"],
+            model_reader,
+            model_fetcher,
+        )
+    )
 
     if not destination.exists():
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -381,7 +520,7 @@ def _install_locked(
             _copy_runtime(managed_files, staging)
             if api_key is None:
                 raise InstallError("首次安装缺少 API Key。")
-            _write_config(staging / "config.json", api_key)
+            _write_config(staging / "config.json", api_key, model or DEFAULT_CONFIG["model"])
             os.replace(staging, destination)
         finally:
             if staging.exists():
@@ -390,7 +529,9 @@ def _install_locked(
 
     _update_runtime_transactionally(managed_files, destination)
     if api_key is not None:
-        if _create_config_exclusively(config_path, api_key):
+        if _create_config_exclusively(
+            config_path, api_key, model or DEFAULT_CONFIG["model"]
+        ):
             return "installed"
         return "upgraded"
     return "upgraded"

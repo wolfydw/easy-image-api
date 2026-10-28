@@ -4,6 +4,7 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
 $archiveUrl = "https://github.com/wolfydw/easy-image-api/archive/refs/heads/main.zip"
+$defaultModel = "gpt-image-2.5"
 $tempDirectory = $null
 $previousSecurityProtocol = [Net.ServicePointManager]::SecurityProtocol
 
@@ -15,6 +16,58 @@ function Read-ApiKey {
         }
         Write-Warning "API Key 不能为空，请重新输入。"
     }
+}
+
+function Select-Model([string]$ApiKey) {
+    $models = @()
+    try {
+        $headers = @{ Authorization = "Bearer $ApiKey" }
+        $response = Invoke-RestMethod `
+            -UseBasicParsing `
+            -Uri "https://cf.ydw.cool/v1/models" `
+            -Headers $headers `
+            -Method Get `
+            -TimeoutSec 30
+        if ($null -ne $response.data) {
+            $models = @(
+                $response.data |
+                    ForEach-Object { [string]$_.id } |
+                    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+                    Select-Object -Unique
+            )
+        }
+    }
+    catch {
+        $models = @()
+    }
+
+    if ($models.Count -gt 0) {
+        Write-Host "可用模型："
+        for ($index = 0; $index -lt $models.Count; $index++) {
+            Write-Host ("  {0}) {1}" -f ($index + 1), $models[$index])
+        }
+        while ($true) {
+            $choice = Read-Host "请选择模型编号（直接回车使用 $defaultModel）"
+            if ([string]::IsNullOrWhiteSpace($choice)) {
+                if ($models -contains $defaultModel) {
+                    return $defaultModel
+                }
+                return $models[0]
+            }
+            $number = 0
+            if ([int]::TryParse($choice, [ref]$number) -and $number -ge 1 -and $number -le $models.Count) {
+                return $models[$number - 1]
+            }
+            Write-Warning "请输入列表中的有效编号。"
+        }
+    }
+
+    Write-Warning "无法获取可用模型列表，请手动输入模型名。"
+    $manualModel = Read-Host "请输入模型名称（直接回车使用 $defaultModel）"
+    if ([string]::IsNullOrWhiteSpace($manualModel)) {
+        return $defaultModel
+    }
+    return $manualModel.Trim()
 }
 
 try {
@@ -50,8 +103,10 @@ try {
     $configEntry = Get-Item -LiteralPath $configPath -Force -ErrorAction SilentlyContinue
     $hasExistingConfig = $null -ne $configEntry
     $apiKey = $null
+    $model = $defaultModel
     if (-not $hasExistingConfig) {
         $apiKey = Read-ApiKey
+        $model = Select-Model $apiKey
     }
 
     $destinationExists = Test-Path -LiteralPath $destination -PathType Container
@@ -70,7 +125,7 @@ try {
         $config = [ordered]@{
             endpoint = "https://cf.ydw.cool"
             api_key = $apiKey
-            model = "gpt-image-2.5"
+            model = $model
             size = "auto"
             quality = "high"
             output_format = "png"
