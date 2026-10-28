@@ -4,7 +4,6 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
 $archiveUrl = "https://github.com/wolfydw/easy-image-api/archive/refs/heads/main.zip"
-$acceleratedArchiveUrl = "https://ghfast.top/$archiveUrl"
 $tempDirectory = $null
 $previousSecurityProtocol = [Net.ServicePointManager]::SecurityProtocol
 
@@ -34,30 +33,8 @@ try {
     $destination = Join-Path $codexHome "skills\easy-image-api"
     New-Item -ItemType Directory -Force -Path $tempDirectory, $extractPath | Out-Null
 
-    $archiveReady = $false
-    $downloadError = $null
-    foreach ($candidateUrl in @($archiveUrl, $acceleratedArchiveUrl)) {
-        if ($candidateUrl -eq $acceleratedArchiveUrl) {
-            Write-Output "GitHub 直连失败或安装包无效，正在尝试 ghfast 加速下载。"
-        }
-        try {
-            Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue
-            if (Test-Path -LiteralPath $extractPath) {
-                Remove-Item -LiteralPath $extractPath -Recurse -Force
-            }
-            New-Item -ItemType Directory -Force -Path $extractPath | Out-Null
-            Invoke-WebRequest -UseBasicParsing -Uri $candidateUrl -OutFile $archivePath -TimeoutSec 60
-            Expand-Archive -LiteralPath $archivePath -DestinationPath $extractPath -Force
-            $archiveReady = $true
-            break
-        }
-        catch {
-            $downloadError = $_
-        }
-    }
-    if (-not $archiveReady) {
-        throw "无法下载有效的 skill 安装包，请检查网络后重试。详情：$downloadError"
-    }
+    Invoke-WebRequest -UseBasicParsing -Uri $archiveUrl -OutFile $archivePath
+    Expand-Archive -LiteralPath $archivePath -DestinationPath $extractPath -Force
 
     $source = Get-ChildItem -LiteralPath $extractPath -Directory | Select-Object -First 1
     if ($null -eq $source) {

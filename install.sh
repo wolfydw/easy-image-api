@@ -3,7 +3,6 @@
 set -euo pipefail
 
 ARCHIVE_URL="https://github.com/wolfydw/easy-image-api/archive/refs/heads/main.zip"
-ACCELERATED_ARCHIVE_URL="https://ghfast.top/$ARCHIVE_URL"
 TEMP_DIRECTORY=""
 CONFIG_TEMP=""
 
@@ -44,32 +43,15 @@ EXTRACT_PATH="$TEMP_DIRECTORY/extracted"
 DESTINATION="${CODEX_HOME:-$HOME/.codex}/skills/easy-image-api"
 mkdir -p "$EXTRACT_PATH"
 
-downloaded=0
-for archive_url in "$ARCHIVE_URL" "$ACCELERATED_ARCHIVE_URL"; do
-  if [[ "$archive_url" == "$ACCELERATED_ARCHIVE_URL" ]]; then
-    printf '%s\n' "GitHub 直连失败或安装包无效，正在尝试 ghfast 加速下载。" >&2
-  fi
-  rm -f -- "$ARCHIVE_PATH"
-  if curl \
-    --fail \
-    --silent \
-    --show-error \
-    --location \
-    --connect-timeout 8 \
-    --max-time 60 \
-    --proto '=https' \
-    --tlsv1.2 \
-    --output "$ARCHIVE_PATH" \
-    "$archive_url" \
-    && unzip -tq "$ARCHIVE_PATH" >/dev/null 2>&1; then
-    downloaded=1
-    break
-  fi
-done
-if [[ "$downloaded" -ne 1 ]]; then
-  printf '%s\n' "错误：无法下载有效的 skill 安装包，请检查网络后重试。" >&2
-  exit 1
-fi
+curl \
+  --fail \
+  --silent \
+  --show-error \
+  --location \
+  --proto '=https' \
+  --tlsv1.2 \
+  --output "$ARCHIVE_PATH" \
+  "$ARCHIVE_URL"
 
 unzip -q "$ARCHIVE_PATH" -d "$EXTRACT_PATH"
 SOURCE_DIRECTORY="$(find "$EXTRACT_PATH" -mindepth 1 -maxdepth 1 -type d -print -quit)"

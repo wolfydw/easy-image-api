@@ -29,8 +29,6 @@ MAX_ARCHIVE_BYTES = 50 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 100 * 1024 * 1024
 MAX_MEMBER_BYTES = 25 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 2_000
-ARCHIVE_DOWNLOAD_TIMEOUT = 15
-GHFAST_PREFIX = "https://ghfast.top/"
 REQUIRED_FILES = (
     "SKILL.md",
     "scripts/generate_image.py",
@@ -64,49 +62,24 @@ def _default_destination() -> Path:
     return codex_home / "skills" / SKILL_NAME
 
 
-def _download_archive_once(url: str) -> bytes:
+def _download_archive(url: str = REPOSITORY_ARCHIVE_URL) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": ARCHIVE_USER_AGENT})
-    # urllib 的 timeout 限制单次 socket 等待，不是整个下载的总时长。
-    with urllib.request.urlopen(request, timeout=ARCHIVE_DOWNLOAD_TIMEOUT) as response:
-        content_length = response.headers.get("Content-Length")
-        if content_length:
-            try:
-                if int(content_length) > MAX_ARCHIVE_BYTES:
-                    raise InstallError("下载的安装包过大，已停止安装。")
-            except ValueError:
-                pass
-        archive = response.read(MAX_ARCHIVE_BYTES + 1)
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            content_length = response.headers.get("Content-Length")
+            if content_length:
+                try:
+                    if int(content_length) > MAX_ARCHIVE_BYTES:
+                        raise InstallError("下载的安装包过大，已停止安装。")
+                except ValueError:
+                    pass
+            archive = response.read(MAX_ARCHIVE_BYTES + 1)
+    except (OSError, urllib.error.URLError) as exc:
+        raise InstallError(f"无法下载 skill：{exc}") from exc
 
     if len(archive) > MAX_ARCHIVE_BYTES:
         raise InstallError("下载的安装包过大，已停止安装。")
     return archive
-
-
-def _download_archive(url: str = REPOSITORY_ARCHIVE_URL) -> bytes:
-    """下载安装包；GitHub 直连失败时仅对默认地址尝试一次 ghfast 回退。"""
-    try:
-        return _download_archive_once(url)
-    except InstallError:
-        # 下载大小限制等确定性错误不能通过更换下载源解决，也不能触发代理回退。
-        raise
-    except (OSError, urllib.error.URLError) as direct_error:
-        if url != REPOSITORY_ARCHIVE_URL:
-            raise InstallError(f"无法下载 skill：{direct_error}") from direct_error
-
-        accelerated_url = f"{GHFAST_PREFIX}{url}"
-        print(
-            "GitHub 直连下载失败，正在尝试国内加速源 ghfast.top……",
-            file=sys.stderr,
-        )
-        try:
-            return _download_archive_once(accelerated_url)
-        except InstallError:
-            raise
-        except (OSError, urllib.error.URLError) as accelerated_error:
-            raise InstallError(
-                f"无法下载 skill：GitHub 直连失败（{direct_error}）；"
-                f"加速源也失败（{accelerated_error}）。"
-            ) from accelerated_error
 
 
 def _validated_archive_members(
