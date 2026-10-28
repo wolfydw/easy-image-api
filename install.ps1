@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
 $archiveUrl = "https://github.com/wolfydw/easy-image-api/archive/refs/heads/main.zip"
-$defaultModel = "gpt-image-2.5"
+$defaultModel = "gpt-image-2"
 $tempDirectory = $null
 $previousSecurityProtocol = [Net.ServicePointManager]::SecurityProtocol
 
@@ -18,13 +18,20 @@ function Read-ApiKey {
     }
 }
 
-function Select-Model([string]$ApiKey) {
+function Get-ModelsUri([string]$Endpoint) {
+    if ($Endpoint -match "/v1(?:/.*)?$") {
+        return (($Endpoint -replace "/v1(?:/.*)?$", "/v1") + "/models")
+    }
+    return ($Endpoint.TrimEnd("/") + "/v1/models")
+}
+
+function Select-Model([string]$ApiKey, [string]$CurrentModel = $defaultModel, [string]$Endpoint = "https://cf.ydw.cool") {
     $models = @()
     try {
         $headers = @{ Authorization = "Bearer $ApiKey" }
         $response = Invoke-RestMethod `
             -UseBasicParsing `
-            -Uri "https://cf.ydw.cool/v1/models" `
+            -Uri (Get-ModelsUri $Endpoint) `
             -Headers $headers `
             -Method Get `
             -TimeoutSec 30
@@ -41,16 +48,21 @@ function Select-Model([string]$ApiKey) {
         $models = @()
     }
 
+    if (-not [string]::IsNullOrWhiteSpace($CurrentModel) -and $models -notcontains $CurrentModel) {
+        $models += $CurrentModel
+    }
+
     if ($models.Count -gt 0) {
         Write-Host "可用模型："
         for ($index = 0; $index -lt $models.Count; $index++) {
-            Write-Host ("  {0}) {1}" -f ($index + 1), $models[$index])
+            $marker = if ($models[$index] -eq $CurrentModel) { "（当前）" } else { "" }
+            Write-Host ("  {0}) {1}{2}" -f ($index + 1), $models[$index], $marker)
         }
         while ($true) {
-            $choice = Read-Host "请选择模型编号（直接回车使用 $defaultModel）"
+            $choice = Read-Host "请选择模型编号（直接回车使用 $CurrentModel）"
             if ([string]::IsNullOrWhiteSpace($choice)) {
-                if ($models -contains $defaultModel) {
-                    return $defaultModel
+                if (-not [string]::IsNullOrWhiteSpace($CurrentModel)) {
+                    return $CurrentModel
                 }
                 return $models[0]
             }
@@ -63,9 +75,9 @@ function Select-Model([string]$ApiKey) {
     }
 
     Write-Warning "无法获取可用模型列表，请手动输入模型名。"
-    $manualModel = Read-Host "请输入模型名称（直接回车使用 $defaultModel）"
+    $manualModel = Read-Host "请输入模型名称（直接回车使用 $CurrentModel）"
     if ([string]::IsNullOrWhiteSpace($manualModel)) {
-        return $defaultModel
+        return $CurrentModel
     }
     return $manualModel.Trim()
 }
@@ -104,9 +116,33 @@ try {
     $hasExistingConfig = $null -ne $configEntry
     $apiKey = $null
     $model = $defaultModel
+    $existingConfig = $null
+    $configChanged = $false
     if (-not $hasExistingConfig) {
         $apiKey = Read-ApiKey
         $model = Select-Model $apiKey
+    }
+    else {
+        try {
+            $existingConfig = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $apiKey = [string]$existingConfig.api_key
+            $currentModel = [string]$existingConfig.model
+            if ([string]::IsNullOrWhiteSpace($currentModel)) {
+                $currentModel = $defaultModel
+            }
+            $configuredEndpoint = [string]$existingConfig.endpoint
+            if ([string]::IsNullOrWhiteSpace($configuredEndpoint)) {
+                $configuredEndpoint = "https://cf.ydw.cool"
+            }
+            if (-not [string]::IsNullOrWhiteSpace($apiKey)) {
+                $model = Select-Model $apiKey $currentModel $configuredEndpoint
+                $configChanged = $model -ne $currentModel
+            }
+        }
+        catch {
+            Write-Warning "无法读取现有配置，已跳过模型选择并保留原配置。"
+            $existingConfig = $null
+        }
     }
 
     $destinationExists = Test-Path -LiteralPath $destination -PathType Container
@@ -165,10 +201,28 @@ try {
             }
         }
     }
+    elseif ($configChanged -and $null -ne $existingConfig) {
+        if ($existingConfig.PSObject.Properties.Name -contains "model") {
+            $existingConfig.model = $model
+        }
+        else {
+            $existingConfig | Add-Member -NotePropertyName model -NotePropertyValue $model
+        }
+        $updatedJson = ($existingConfig | ConvertTo-Json -Depth 20) + [Environment]::NewLine
+        $updatedPath = Join-Path $tempDirectory "config.updated.json"
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [IO.File]::WriteAllText($updatedPath, $updatedJson, $utf8NoBom)
+        Move-Item -LiteralPath $updatedPath -Destination $configPath -Force
+    }
 
     if ($hasExistingConfig) {
         Write-Output "easy-image-api skill 已升级：$destination"
-        Write-Output "已保留原有 config.json，未读取、覆盖或修改。"
+        if ($configChanged) {
+            Write-Output "已更新模型选择，其他配置字段保持不变。"
+        }
+        else {
+            Write-Output "已保留原有 config.json。"
+        }
         Write-Output "配置文件位置：$configPath"
     }
     else {

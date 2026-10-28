@@ -14,11 +14,14 @@ generator and conversation credentials.
 The platform installer copies the skill files and, on first installation, asks
 for the API key with visible terminal input so the user can confirm that it was
 pasted. It then requests `/v1/models` with that key and lets the user choose a
-model before creating `config.json` in the installed skill root. If the model
-list is unavailable, the installer accepts a manually entered model name or
-uses `gpt-image-2.5` when left blank. Installation does not require Python. It
-sets `endpoint` to `https://cf.ydw.cool`. Never ask the user to paste an API key
-into chat or a command argument.
+model before creating `config.json` in the installed skill root. Pressing Enter
+on a fresh install uses `gpt-image-2`. During upgrades, the installer marks the
+current configured model and uses it when Enter is pressed; selecting another
+model updates only the `model` field. If the model list is unavailable, the
+installer accepts a manually entered model name or uses the current/default
+model when left blank. Installation does not require Python. It sets `endpoint`
+to `https://cf.ydw.cool`. Never ask the user to paste an API key into chat or a
+command argument.
 
 The source repository's `config.json` remains a placeholder template:
 
@@ -26,7 +29,7 @@ The source repository's `config.json` remains a placeholder template:
 {
   "endpoint": "请填写图片接口地址",
   "api_key": "请填写 API Key",
-  "model": "gpt-image-2.5",
+  "model": "gpt-image-2",
   "size": "auto",
   "quality": "high",
   "output_format": "png"
@@ -38,10 +41,11 @@ directory, regardless of the current working directory. Do not use another path.
 Keep real credentials out of the source repository; the repository copy must
 contain placeholders only.
 
-When upgrading an existing installation, preserve its `config.json` without
-reading, overwriting, deleting, or modifying it, and do not prompt for the API
-key again. Update only the other skill files. Never replace an existing user
-configuration with the repository's placeholder configuration.
+When upgrading an existing installation, read its API key and current model
+only to request the model list and provide the default selection. Do not prompt
+for the API key again. Update only the `model` field when the user selects a
+different model, and preserve every other configuration field. Never replace an
+existing user configuration with the repository's placeholder configuration.
 
 Treat `endpoint` as either the relay's base endpoint or a complete generations or
 edits endpoint. Resolve generation requests to `/v1/images/generations` and edit

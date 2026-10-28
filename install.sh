@@ -5,8 +5,10 @@ set -euo pipefail
 ARCHIVE_URL="https://github.com/wolfydw/easy-image-api/archive/refs/heads/main.zip"
 TEMP_DIRECTORY=""
 CONFIG_TEMP=""
-DEFAULT_MODEL="gpt-image-2.5"
+DEFAULT_MODEL="gpt-image-2"
 MODEL="${DEFAULT_MODEL}"
+CURRENT_MODEL="${DEFAULT_MODEL}"
+MODELS_ENDPOINT="https://cf.ydw.cool"
 
 cleanup() {
   if [[ -n "$CONFIG_TEMP" && -f "$CONFIG_TEMP" ]]; then
@@ -36,6 +38,15 @@ curl_config_escape() {
   printf '%s' "$value"
 }
 
+models_url() {
+  local endpoint="${1%%\?*}"
+  endpoint="${endpoint%/}"
+  if [[ "$endpoint" == */v1 || "$endpoint" == */v1/* ]]; then
+    endpoint="${endpoint%/v1*}"
+  fi
+  printf '%s/v1/models' "$endpoint"
+}
+
 select_model() {
   local model_response="$TEMP_DIRECTORY/models.json"
   local curl_config="$TEMP_DIRECTORY/models-curl.conf"
@@ -44,6 +55,7 @@ select_model() {
   local model_id
   local choice
   local index
+  local models_fetched=0
 
   escaped_key="$(curl_config_escape "$API_KEY")"
   printf 'header = "Authorization: Bearer %s"\n' "$escaped_key" > "$curl_config"
@@ -58,8 +70,9 @@ select_model() {
     --tlsv1.2 \
     --config "$curl_config" \
     --output "$model_response" \
-    "https://cf.ydw.cool/v1/models" \
+    "$(models_url "$MODELS_ENDPOINT")" \
     && [[ -s "$model_response" ]]; then
+    models_fetched=1
     while IFS= read -r model_id; do
       [[ -n "$model_id" ]] && model_ids+=("$model_id")
     done < <(
@@ -69,24 +82,31 @@ select_model() {
     )
   fi
 
+  if [[ "$models_fetched" -eq 1 && -n "$CURRENT_MODEL" ]]; then
+    local current_found=0
+    for model_id in "${model_ids[@]}"; do
+      [[ "$model_id" == "$CURRENT_MODEL" ]] && current_found=1
+    done
+    if [[ "$current_found" -eq 0 ]]; then
+      model_ids+=("$CURRENT_MODEL")
+    fi
+  fi
+
   if [[ "${#model_ids[@]}" -gt 0 ]]; then
     printf '%s\n' "可用模型："
     for index in "${!model_ids[@]}"; do
-      printf '  %d) %s\n' "$((index + 1))" "${model_ids[$index]}"
+      local marker=""
+      [[ "${model_ids[$index]}" == "$CURRENT_MODEL" ]] && marker="（当前配置）"
+      printf '  %d) %s%s\n' "$((index + 1))" "${model_ids[$index]}" "$marker"
     done
     while true; do
-      read -r -p "请选择模型编号（直接回车使用 ${DEFAULT_MODEL}）：" choice </dev/tty || {
+      read -r -p "请选择模型编号（直接回车使用 ${CURRENT_MODEL}）：" choice </dev/tty || {
         printf '\n%s\n' "错误：未收到模型选择，安装已取消。" >&2
         exit 1
       }
       if [[ -z "$choice" ]]; then
-        MODEL="${model_ids[0]}"
-        for model_id in "${model_ids[@]}"; do
-          if [[ "$model_id" == "$DEFAULT_MODEL" ]]; then
-            MODEL="$DEFAULT_MODEL"
-            break
-          fi
-        done
+        MODEL="$CURRENT_MODEL"
+        [[ -n "$MODEL" ]] || MODEL="${model_ids[0]}"
         return
       fi
       if [[ "$choice" =~ ^[0-9]+$ ]] && ((choice >= 1 && choice <= ${#model_ids[@]})); then
@@ -98,13 +118,51 @@ select_model() {
   fi
 
   printf '%s\n' "无法获取可用模型列表，请手动输入模型名。" >&2
-  read -r -p "请输入模型名称（直接回车使用 ${DEFAULT_MODEL}）：" choice </dev/tty || {
+  read -r -p "请输入模型名称（直接回车使用 ${CURRENT_MODEL}）：" choice </dev/tty || {
     printf '\n%s\n' "错误：未收到模型名称，安装已取消。" >&2
     exit 1
   }
-  if [[ -n "$choice" ]]; then
-    MODEL="$choice"
+  MODEL="${choice:-$CURRENT_MODEL}"
+}
+
+read_config_field() {
+  local field="$1"
+  if command -v jq >/dev/null 2>&1; then
+    jq -r --arg field "$field" '.[$field] // empty' "$CONFIG_PATH" 2>/dev/null || true
+    return
   fi
+  sed -nE "s/^[[:space:]]*\"${field}\"[[:space:]]*:[[:space:]]*\"(([^\"\\]|\\.)*)\".*$/\1/p" "$CONFIG_PATH" | head -n 1
+}
+
+update_existing_model() {
+  if [[ -L "$CONFIG_PATH" ]]; then
+    printf '%s\n' "警告：config.json 是符号链接，本次不覆盖链接目标。" >&2
+    return 0
+  fi
+  local updated_path="$TEMP_DIRECTORY/config.updated.json"
+  local escaped_model
+  escaped_model="$(json_escape "$MODEL")"
+  if command -v jq >/dev/null 2>&1; then
+    jq --arg model "$MODEL" '.model = $model' "$CONFIG_PATH" > "$updated_path"
+  else
+    if ! awk -v replacement="$escaped_model" '
+      BEGIN { updated = 0 }
+      !updated && $0 ~ /^[[:space:]]*"model"[[:space:]]*:/ {
+        indent = $0
+        sub(/[^[:space:]].*/, "", indent)
+        comma = ($0 ~ /,[[:space:]]*$/) ? "," : ""
+        print indent "\"model\": \"" replacement "\"" comma
+        updated = 1
+        next
+      }
+      { print }
+      END { exit(updated ? 0 : 2) }
+    ' "$CONFIG_PATH" > "$updated_path"; then
+      rm -f -- "$updated_path"
+      return 0
+    fi
+  fi
+  mv -f -- "$updated_path" "$CONFIG_PATH"
 }
 
 if ! command -v curl >/dev/null 2>&1; then
@@ -160,7 +218,20 @@ if [[ "$HAS_EXISTING_CONFIG" -eq 0 ]]; then
       printf '%s\n' "API Key 不能为空，请重新输入。" >&2
     fi
   done
+  CURRENT_MODEL="$DEFAULT_MODEL"
   select_model
+else
+  API_KEY="$(read_config_field api_key)"
+  CURRENT_MODEL="$(read_config_field model)"
+  [[ -n "$CURRENT_MODEL" ]] || CURRENT_MODEL="$DEFAULT_MODEL"
+  configured_endpoint="$(read_config_field endpoint)"
+  [[ -n "$configured_endpoint" ]] && MODELS_ENDPOINT="$configured_endpoint"
+  if [[ -n "$API_KEY" ]]; then
+    select_model
+  else
+    MODEL="$CURRENT_MODEL"
+    printf '%s\n' "警告：现有配置缺少 API Key，已跳过模型选择。" >&2
+  fi
 fi
 
 DESTINATION_EXISTS=0
@@ -194,11 +265,17 @@ if [[ "$HAS_EXISTING_CONFIG" -eq 0 ]]; then
   fi
   rm -f -- "$CONFIG_TEMP"
   CONFIG_TEMP=""
+elif [[ "$MODEL" != "$CURRENT_MODEL" ]]; then
+  update_existing_model
 fi
 
 if [[ "$HAS_EXISTING_CONFIG" -eq 1 ]]; then
   printf '%s\n' "easy-image-api skill 已升级：$DESTINATION"
-  printf '%s\n' "已保留原有 config.json，未读取、覆盖或修改。"
+  if [[ "$MODEL" != "$CURRENT_MODEL" ]]; then
+    printf '%s\n' "已更新模型选择，其他配置字段保持不变。"
+  else
+    printf '%s\n' "已保留原有 config.json。"
+  fi
   printf '%s\n' "配置文件位置：$DESTINATION/config.json"
 else
   printf '%s\n' "easy-image-api skill 已安装：$DESTINATION"

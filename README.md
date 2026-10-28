@@ -90,9 +90,9 @@ Windows PowerShell：
 $script = Join-Path $env:TEMP "easy-image-api-install.ps1"; Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/wolfydw/easy-image-api/main/install.ps1" -OutFile $script; powershell.exe -ExecutionPolicy Bypass -File $script; Remove-Item $script
 ```
 
-首次安装时，安装器会先提示输入 API Key，再请求接口的 `/v1/models` 列表并让你选择模型，最后生成本机 `config.json`。如果接口没有提供模型列表，可直接输入模型名或回车使用 `gpt-image-2.5`。输入内容会正常显示，方便确认是否已粘贴。安装器不会检查 Python，也不会把密钥写入源代码或配置模板。接口地址默认为 `https://cf.ydw.cool`。
+首次安装时，安装器会先提示输入 API Key，再请求接口的 `/v1/models` 列表并让你选择模型；直接回车使用 `gpt-image-2`。如果接口没有提供模型列表，可直接输入模型名。升级时也会展示模型列表，直接回车保留当前配置中的模型，选择其他编号只更新 `model` 字段。输入内容会正常显示，方便确认是否已粘贴。安装器不会检查 Python，也不会把密钥写入源代码或配置模板。接口地址默认为 `https://cf.ydw.cool`。
 
-再次运行同一条命令即可升级。升级时，安装器会保留已有的 `config.json`，不会读取、覆盖、删除或修改它，也不会再次询问 API Key；只有其他 skill 文件会更新。仓库中的 `config.json` 始终只包含占位符，不含真实接口信息或密钥。
+再次运行同一条命令即可升级。升级时，安装器只读取已有配置来取得当前模型和 API Key，默认保留当前模型；只有确认选择了其他模型时才更新 `model` 字段，其他配置保持不变。仓库中的 `config.json` 始终只包含占位符，不含真实接口信息或密钥。
 
 安装完成后，请在 Codex 的下一个任务中使用 `$easy-image-api`。
 

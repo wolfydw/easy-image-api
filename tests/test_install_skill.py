@@ -69,7 +69,7 @@ class InstallTests(unittest.TestCase):
                 return False
 
             def read(self, _size=-1):
-                return b'{"data":[{"id":"gpt-image-2.5"},{"id":"other"}]}'
+                return b'{"data":[{"id":"gpt-image-2"},{"id":"other"}]}'
 
         def opener(request, timeout):
             captured["request"] = request
@@ -80,7 +80,7 @@ class InstallTests(unittest.TestCase):
             "secret-key", "https://relay.example.com/v1/images/generations", opener
         )
 
-        self.assertEqual(models, ["gpt-image-2.5", "other"])
+        self.assertEqual(models, ["gpt-image-2", "other"])
         self.assertEqual(captured["request"].full_url, "https://relay.example.com/v1/models")
         self.assertEqual(captured["request"].get_header("Authorization"), "Bearer secret-key")
         self.assertEqual(captured["timeout"], INSTALLER.MODEL_REQUEST_TIMEOUT)
@@ -102,10 +102,20 @@ class InstallTests(unittest.TestCase):
         selected = INSTALLER._select_model(
             "secret-key",
             model_reader=lambda _prompt: "",
-            model_fetcher=lambda _key, _endpoint: ["other", "gpt-image-2.5"],
+            model_fetcher=lambda _key, _endpoint: ["other", "gpt-image-2"],
         )
 
-        self.assertEqual(selected, "gpt-image-2.5")
+        self.assertEqual(selected, "gpt-image-2")
+
+    def test_select_model_uses_current_model_when_upgrading(self) -> None:
+        selected = INSTALLER._select_model(
+            "secret-key",
+            default_model="current-model",
+            model_reader=lambda _prompt: "",
+            model_fetcher=lambda _key, _endpoint: ["other-model"],
+        )
+
+        self.assertEqual(selected, "current-model")
 
     def test_failed_model_fetch_allows_manual_model(self) -> None:
         errors = io.StringIO()
@@ -142,7 +152,7 @@ class InstallTests(unittest.TestCase):
             config = json.loads((destination / "config.json").read_text(encoding="utf-8"))
             self.assertEqual(config["endpoint"], "https://cf.ydw.cool")
             self.assertEqual(config["api_key"], api_key)
-            self.assertEqual(config["model"], "gpt-image-2.5")
+            self.assertEqual(config["model"], "gpt-image-2")
             self.assertEqual(
                 (destination / "scripts" / "generate_image.py").read_text(
                     encoding="utf-8"
@@ -196,6 +206,52 @@ class InstallTests(unittest.TestCase):
                 (destination / "SKILL.md").read_text(encoding="utf-8"),
                 "skill updated\n",
             )
+
+    def test_upgrade_selects_model_with_current_model_as_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            source = _write_source(root, marker="updated")
+            destination = root / "destination"
+            destination.mkdir()
+            config_path = destination / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "endpoint": "https://relay.example.com",
+                        "api_key": "existing-key",
+                        "model": "current-model",
+                        "size": "1024x1024",
+                        "quality": "high",
+                        "output_format": "webp",
+                        "custom": {"keep": True},
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            config_stat = config_path.stat()
+
+            def fetch_existing_models(key: str, endpoint: str) -> list[str]:
+                self.assertEqual(key, "existing-key")
+                self.assertEqual(endpoint, "https://relay.example.com")
+                return ["current-model", "new-model"]
+
+            result = INSTALLER.install(
+                source,
+                destination,
+                lambda _prompt: self.fail("upgrade must not request an API key"),
+                lambda _prompt: "2",
+                fetch_existing_models,
+            )
+
+            self.assertEqual(result, "upgraded")
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            self.assertEqual(config["model"], "new-model")
+            self.assertEqual(config["api_key"], "existing-key")
+            self.assertEqual(config["size"], "1024x1024")
+            self.assertEqual(config["custom"], {"keep": True})
+            self.assertNotEqual(config_path.stat().st_mtime_ns, config_stat.st_mtime_ns)
 
     @unittest.skipUnless(hasattr(os, "symlink"), "symbolic links are unsupported")
     def test_upgrade_preserves_broken_config_symlink(self) -> None:
@@ -409,7 +465,7 @@ class InstallTests(unittest.TestCase):
             )
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
-            self.assertIn("已原样保留 config.json", completed.stdout)
+            self.assertIn("保留其他配置字段", completed.stdout)
             self.assertEqual(
                 (destination / "config.json").read_text(encoding="utf-8"),
                 "preserve me",

@@ -44,7 +44,7 @@ IGNORED_NAMES = {"__pycache__", ".DS_Store"}
 DEFAULT_CONFIG = {
     "endpoint": "https://cf.ydw.cool",
     "api_key": "",
-    "model": "gpt-image-2.5",
+    "model": "gpt-image-2",
     "size": "auto",
     "quality": "high",
     "output_format": "png",
@@ -360,23 +360,27 @@ def _fetch_models(
     return model_ids
 
 
-def _prompt_model_name(reader: Optional[Callable[[str], str]] = None) -> str:
+def _prompt_model_name(
+    reader: Optional[Callable[[str], str]] = None,
+    default_model: str = DEFAULT_CONFIG["model"],
+) -> str:
     prompt = reader or input
     while True:
         try:
             model = prompt(
-                f"请输入模型名（直接回车使用默认 {DEFAULT_CONFIG['model']}）："
+                f"请输入模型名（直接回车使用当前默认 {default_model}）："
             )
         except (EOFError, KeyboardInterrupt) as exc:
             raise InstallError("未选择模型，安装已取消。") from exc
         if model.strip():
             return model.strip()
-        return DEFAULT_CONFIG["model"]
+        return default_model
 
 
 def _select_model(
     api_key: str,
     endpoint: str = DEFAULT_CONFIG["endpoint"],
+    default_model: str = DEFAULT_CONFIG["model"],
     model_reader: Optional[Callable[[str], str]] = None,
     model_fetcher: Optional[Callable[[str, str], Sequence[str]]] = None,
 ) -> str:
@@ -385,28 +389,34 @@ def _select_model(
         models = list(fetch_models(api_key, endpoint))
     except (InstallError, OSError, urllib.error.URLError, ValueError):
         print("获取模型列表失败，将改为手动输入模型名。", file=sys.stderr)
-        return _prompt_model_name(model_reader)
+        return _prompt_model_name(model_reader, default_model)
 
     if not models:
         print("接口未返回可用模型，将改为手动输入模型名。", file=sys.stderr)
-        return _prompt_model_name(model_reader)
+        return _prompt_model_name(model_reader, default_model)
+
+    current_model_not_listed = bool(default_model and default_model not in models)
+    if current_model_not_listed:
+        models.append(default_model)
 
     print("检测到可用模型：")
     for index, model in enumerate(models, start=1):
-        print(f"  {index}. {model}")
+        marker = "（当前配置，列表未返回）" if model == default_model and current_model_not_listed else (
+            "（当前）" if model == default_model else ""
+        )
+        print(f"  {index}. {model}{marker}")
     prompt = model_reader or input
     while True:
         try:
             choice = prompt(
-                f"请选择模型编号（直接回车使用默认 {DEFAULT_CONFIG['model']}，输入 0 手动填写）："
+                f"请选择模型编号（直接回车使用 {default_model}，输入 0 手动填写）："
             ).strip()
         except (EOFError, KeyboardInterrupt) as exc:
             raise InstallError("未选择模型，安装已取消。") from exc
         if not choice:
-            default_model = DEFAULT_CONFIG["model"]
             return default_model if default_model in models else models[0]
         if choice == "0":
-            return _prompt_model_name(model_reader)
+            return _prompt_model_name(model_reader, default_model)
         try:
             selected = int(choice)
         except ValueError:
@@ -415,6 +425,40 @@ def _select_model(
         if 1 <= selected <= len(models):
             return models[selected - 1]
         print("请输入列表中的编号。", file=sys.stderr)
+
+
+def _read_existing_config(path: Path) -> Optional[dict[str, object]]:
+    """Read a valid existing config for upgrade-time model selection."""
+    try:
+        with path.open("r", encoding="utf-8") as config_file:
+            config = json.load(config_file)
+    except (OSError, UnicodeError, ValueError):
+        return None
+    return config if isinstance(config, dict) else None
+
+
+def _update_existing_config_model(path: Path, model: str) -> None:
+    config = _read_existing_config(path)
+    if config is None:
+        return
+    config["model"] = model
+    target = path.resolve() if path.is_symlink() else path
+    original_mode = stat.S_IMODE(target.stat().st_mode)
+    temporary = target.parent / f".{target.name}.{uuid.uuid4().hex}.tmp"
+    try:
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.fchmod(descriptor, original_mode)
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as config_file:
+            json.dump(config, config_file, ensure_ascii=False, indent=2)
+            config_file.write("\n")
+            config_file.flush()
+            os.fsync(config_file.fileno())
+        os.replace(temporary, target)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _write_config(destination: Path, api_key: str, model: str) -> None:
@@ -499,17 +543,45 @@ def _install_locked(
 ) -> str:
     config_path = destination / "config.json"
     has_existing_config = _path_entry_exists(config_path)
-    api_key = None if has_existing_config else _prompt_api_key(key_reader)
-    model = (
-        None
-        if api_key is None
-        else _select_model(
+    existing_config = _read_existing_config(config_path) if has_existing_config else None
+    current_model = (
+        existing_config.get("model")
+        if isinstance(existing_config, dict)
+        and isinstance(existing_config.get("model"), str)
+        and existing_config.get("model").strip()
+        else DEFAULT_CONFIG["model"]
+    )
+    if has_existing_config:
+        api_key = (
+            existing_config.get("api_key", "")
+            if isinstance(existing_config, dict)
+            else ""
+        )
+        endpoint = (
+            existing_config.get("endpoint", DEFAULT_CONFIG["endpoint"])
+            if isinstance(existing_config, dict)
+            else DEFAULT_CONFIG["endpoint"]
+        )
+        model = (
+            _select_model(
+                api_key if isinstance(api_key, str) else "",
+                endpoint if isinstance(endpoint, str) else DEFAULT_CONFIG["endpoint"],
+                current_model,
+                model_reader,
+                model_fetcher,
+            )
+            if existing_config is not None
+            else None
+        )
+    else:
+        api_key = _prompt_api_key(key_reader)
+        model = _select_model(
             api_key,
             DEFAULT_CONFIG["endpoint"],
+            DEFAULT_CONFIG["model"],
             model_reader,
             model_fetcher,
         )
-    )
 
     if not destination.exists():
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -528,12 +600,19 @@ def _install_locked(
         return "installed"
 
     _update_runtime_transactionally(managed_files, destination)
-    if api_key is not None:
+    if not has_existing_config and api_key is not None:
         if _create_config_exclusively(
             config_path, api_key, model or DEFAULT_CONFIG["model"]
         ):
             return "installed"
         return "upgraded"
+    if (
+        has_existing_config
+        and model is not None
+        and model != current_model
+        and existing_config is not None
+    ):
+        _update_existing_config_model(config_path, model)
     return "upgraded"
 
 
@@ -574,7 +653,7 @@ def main() -> int:
         return 1
 
     if result == "upgraded":
-        print("检测到已有配置，已原样保留 config.json。")
+        print("检测到已有配置，升级时保留其他配置字段，仅按选择更新 model。")
         print(f"easy-image-api 已升级：{args.destination.expanduser().resolve()}")
     else:
         print(f"easy-image-api 已安装：{args.destination.expanduser().resolve()}")
