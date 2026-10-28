@@ -87,7 +87,7 @@ curl -fsSL https://raw.githubusercontent.com/wolfydw/easy-image-api/main/install
 Windows PowerShell：
 
 ```powershell
-irm https://raw.githubusercontent.com/wolfydw/easy-image-api/main/install.ps1 | iex
+$script = Join-Path $env:TEMP "easy-image-api-install.ps1"; Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/wolfydw/easy-image-api/main/install.ps1" -OutFile $script; powershell.exe -ExecutionPolicy Bypass -File $script; Remove-Item $script
 ```
 
 首次安装时，安装器只复制 Skill 文件，并在终端中提示输入 API Key；输入内容会正常显示，方便确认是否已粘贴，然后自动生成本机 `config.json`。安装器不会检查 Python，也不会把密钥放入命令参数。接口地址默认为 `https://cf.ydw.cool`，图片模型默认为 `gpt-image-2.5`。
