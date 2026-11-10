@@ -1,9 +1,12 @@
-& {
+﻿& {
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$archiveUrl = "https://github.com/wolfydw/easy-image-api/archive/refs/heads/main.zip"
+$archiveUrls = @(
+    "https://codeload.github.com/wolfydw/easy-image-api/zip/refs/heads/main",
+    "https://github.com/wolfydw/easy-image-api/archive/refs/heads/main.zip"
+)
 $defaultModel = "gpt-image-2"
 $tempDirectory = $null
 $previousSecurityProtocol = [Net.ServicePointManager]::SecurityProtocol
@@ -98,15 +101,37 @@ try {
     $destination = Join-Path $codexHome "skills\easy-image-api"
     New-Item -ItemType Directory -Force -Path $tempDirectory, $extractPath | Out-Null
 
-    Invoke-WebRequest -UseBasicParsing -Uri $archiveUrl -OutFile $archivePath
-    Expand-Archive -LiteralPath $archivePath -DestinationPath $extractPath -Force
-
-    $source = Get-ChildItem -LiteralPath $extractPath -Directory | Select-Object -First 1
-    if ($null -eq $source) {
-        throw "安装包中没有找到 skill 源目录。"
+    $sourceDirectory = $PSScriptRoot
+    if (-not [string]::IsNullOrWhiteSpace($sourceDirectory) -and
+        (Test-Path -LiteralPath (Join-Path $sourceDirectory "SKILL.md") -PathType Leaf)) {
+        Write-Host "正在从本地目录安装 easy-image-api..."
+    }
+    else {
+        for ($index = 0; $index -lt $archiveUrls.Count; $index++) {
+            try {
+                Write-Host ("正在下载安装包（{0}/{1}）..." -f ($index + 1), $archiveUrls.Count)
+                Invoke-WebRequest -UseBasicParsing -Uri $archiveUrls[$index] -TimeoutSec 60 -OutFile $archivePath -ErrorAction Stop
+                Expand-Archive -LiteralPath $archivePath -DestinationPath $extractPath -Force
+                break
+            }
+            catch {
+                Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath $extractPath -Recurse -Force -ErrorAction SilentlyContinue
+                if ($index -eq $archiveUrls.Count - 1) {
+                    throw "无法下载或解压 GitHub 安装包。请检查网络，或手动下载完整 ZIP，解压后运行其中的 install.ps1。原始错误：$($_.Exception.Message)"
+                }
+                Write-Warning "当前下载入口不可用，正在尝试 GitHub 的另一个下载入口。"
+                New-Item -ItemType Directory -Force -Path $extractPath | Out-Null
+            }
+        }
+        $source = Get-ChildItem -LiteralPath $extractPath -Directory | Select-Object -First 1
+        if ($null -eq $source) {
+            throw "安装包中没有找到 skill 源目录。"
+        }
+        $sourceDirectory = $source.FullName
     }
     foreach ($required in @("SKILL.md", "scripts\generate_image.py", "scripts\run_generate_image.sh", "scripts\run_generate_image.ps1")) {
-        if (-not (Test-Path -LiteralPath (Join-Path $source.FullName $required) -PathType Leaf)) {
+        if (-not (Test-Path -LiteralPath (Join-Path $sourceDirectory $required) -PathType Leaf)) {
             throw "安装包缺少必要文件：$required"
         }
     }
@@ -151,7 +176,7 @@ try {
     }
 
     foreach ($managed in @("SKILL.md", "agents", "assets", "references", "scripts")) {
-        $sourcePath = Join-Path $source.FullName $managed
+        $sourcePath = Join-Path $sourceDirectory $managed
         if (Test-Path -LiteralPath $sourcePath) {
             Copy-Item -LiteralPath $sourcePath -Destination $destination -Recurse -Force
         }

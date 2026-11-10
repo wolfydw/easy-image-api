@@ -67,7 +67,8 @@ $easy-image-api 只把遮罩区域内的背景改成浅灰色，其他区域保�
 │   └── install_skill.py       # Python 安装辅助逻辑
 ├── tests/
 │   ├── test_generate_image.py # 图片生成与编辑测试
-│   └── test_install_skill.py  # 安装与升级测试
+│   ├── test_install_skill.py  # 安装与升级测试
+│   └── test_windows_install.py # PowerShell 安装链路测试
 ├── README.md                  # GitHub 项目说明
 └── AGENTS.md                  # 仓库开发与部署规则
 ```
@@ -84,11 +85,34 @@ macOS / Linux：
 curl -fsSL https://raw.githubusercontent.com/wolfydw/easy-image-api/main/install.sh | bash
 ```
 
-Windows PowerShell：
+Windows PowerShell（Windows 自带的 PowerShell 5.1 或 PowerShell 7）：
+
+在 PowerShell 中复制执行这一行即可，无需管理员权限：
 
 ```powershell
-$script = Join-Path $env:TEMP "easy-image-api-install.ps1"; Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/wolfydw/easy-image-api/main/install.ps1" -OutFile $script; powershell.exe -ExecutionPolicy Bypass -File $script; Remove-Item $script
+[Net.ServicePointManager]::SecurityProtocol='Tls12'; iex (irm https://raw.githubusercontent.com/wolfydw/easy-image-api/main/install.ps1 -TimeoutSec 30 -ea Stop).TrimStart([char]0xFEFF)
 ```
+
+<details>
+<summary>Windows 下载失败时的备用安装方式</summary>
+
+如果无法连接 `raw.githubusercontent.com`，改用 GitHub 官方 API 入口：
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol='Tls12'; iex (irm "https://api.github.com/repos/wolfydw/easy-image-api/contents/install.ps1?ref=main" -Headers @{ Accept = "application/vnd.github.raw+json" } -TimeoutSec 30 -ea Stop).TrimStart([char]0xFEFF)
+```
+
+如果仍然下载失败，可手动下载安装：
+
+用浏览器[下载完整 ZIP 安装包](https://github.com/wolfydw/easy-image-api/archive/refs/heads/main.zip)，**先解压**，在包含 `install.ps1` 的文件夹中打开 PowerShell，执行：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+安装器会直接使用解压目录里的文件，不会再次从 GitHub 下载安装包。若浏览器也无法下载，需要先恢复 GitHub 的网络访问。
+
+</details>
 
 首次安装时，安装器会先提示输入 API Key，再请求接口的 `/v1/models` 列表并让你选择模型；直接回车使用 `gpt-image-2`。如果接口没有提供模型列表，可直接输入模型名。升级时也会展示模型列表，直接回车保留当前配置中的模型，选择其他编号只更新 `model` 字段。输入内容会正常显示，方便确认是否已粘贴。安装器不会检查 Python，也不会把密钥写入源代码或配置模板。接口地址默认为 `https://cf.ydw.cool`。
 
