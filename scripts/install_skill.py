@@ -447,12 +447,12 @@ def _update_existing_config_model(path: Path, model: str) -> None:
     temporary = target.parent / f".{target.name}.{uuid.uuid4().hex}.tmp"
     try:
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        os.fchmod(descriptor, original_mode)
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as config_file:
             json.dump(config, config_file, ensure_ascii=False, indent=2)
             config_file.write("\n")
             config_file.flush()
             os.fsync(config_file.fileno())
+        temporary.chmod(original_mode)
         os.replace(temporary, target)
     finally:
         try:

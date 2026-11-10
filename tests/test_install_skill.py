@@ -230,6 +230,8 @@ class InstallTests(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
+            if os.name == "posix":
+                config_path.chmod(0o640)
             config_stat = config_path.stat()
 
             def fetch_existing_models(key: str, endpoint: str) -> list[str]:
@@ -252,6 +254,26 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(config["size"], "1024x1024")
             self.assertEqual(config["custom"], {"keep": True})
             self.assertNotEqual(config_path.stat().st_mtime_ns, config_stat.st_mtime_ns)
+            self.assertEqual(
+                stat.S_IMODE(config_path.stat().st_mode),
+                stat.S_IMODE(config_stat.st_mode),
+            )
+
+    def test_failed_model_update_preserves_config_and_removes_temporary_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            config_path = root / "config.json"
+            original = b'{"model":"current-model","custom":{"keep":true}}\n'
+            config_path.write_bytes(original)
+
+            with mock.patch.object(
+                Path, "chmod", side_effect=OSError("simulated permission update failure")
+            ):
+                with self.assertRaisesRegex(OSError, "permission update failure"):
+                    INSTALLER._update_existing_config_model(config_path, "new-model")
+
+            self.assertEqual(config_path.read_bytes(), original)
+            self.assertEqual(list(root.iterdir()), [config_path])
 
     @unittest.skipUnless(hasattr(os, "symlink"), "symbolic links are unsupported")
     def test_upgrade_preserves_broken_config_symlink(self) -> None:

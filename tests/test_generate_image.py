@@ -479,7 +479,10 @@ class EditCliValidationTests(unittest.TestCase):
             self.assertEqual(code, 0, stderr)
             details = json.loads(stdout)
             self.assertEqual(details["request_url"], "https://relay.example.com/v1/images/edits")
-            self.assertIn(str(image_path.resolve()), stdout)
+            self.assertEqual(
+                [image["path"] for image in details["images"]],
+                [str(image_path.resolve())],
+            )
             self.assertNotIn("test-api-key-that-must-not-leak", stdout)
             self.assertNotIn(base64.b64encode(VALID_PNG_BYTES).decode("ascii"), stdout)
 
